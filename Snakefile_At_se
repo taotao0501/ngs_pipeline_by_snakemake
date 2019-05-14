@@ -1,0 +1,59 @@
+SBT=["SRR6833087","SRR6833088","SRR6833089","SRR6833090","SRR6833091","SRR6833092","SRR6833093","SRR6833094","SRR6833095","SRR6833096","SRR6833097","SRR6833098","SRR6833099","SRR6833100","SRR6833101","SRR6833102","SRR6833103","SRR6833104","SRR6833105","SRR6833106","SRR6833107","SRR6833108"]
+
+rule all:
+    input:
+        expand("02_clean/{nico}.fq.gz", nico=SBT),
+        expand("03_align/{nico}.sam", nico=SBT),
+        expand("04_exp/{nico}_count.txt", nico=SBT),
+        expand("05_ft/{nico}_gene.gtf", nico=SBT),
+        expand("05_ft/{nico}_transcript.gtf", nico=SBT)
+
+rule trim:
+    input:
+        "01_raw/{nico}.fastq"
+    output:
+        temp("02_clean/{nico}.fq.gz")
+    threads: 20
+    shell:
+        "java -jar /software/Trimmomatic-0.36/trimmomatic-0.36.jar SE -threads {threads} {input} {output} ILLUMINACLIP:/software/Trimmomatic-0.36/adapters/TruSeq3-SE.fa:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36 "
+        
+rule map:
+    input:
+        "02_clean/{nico}.fq.gz"
+    output:
+        temp("03_align/{nico}.sam")
+    log:
+        "logs/map/{nico}.log"
+    threads: 20 
+    shell:
+        "hisat2 -p {threads} --dta -x /root/s/r/p/A_th/WT-Al_VS_WT-CK/index/tair10 -U {input} -S {output} >{log} 2>&1 "
+    
+rule sort2bam:
+    input:
+        "03_align/{nico}.sam"
+    output:
+        temp("03_align/{nico}.bam")
+    threads: 8
+    shell:
+        "samtools sort -@ {threads} -m 2G -o {output} {input}"
+
+rule count:
+    input:
+        "03_align/{nico}.bam"
+    output:
+        "04_exp/{nico}_count.txt"
+    threads: 20
+    shell:
+        "featureCounts -T {threads} -p -t exon -g gene_id -a /root/s/r/p/A_th/WT-Al_VS_WT-CK/genome/tair10.gtf -o {output} {input}"
+
+ 
+rule fpkm:
+    input:
+        "03_align/{nico}.bam"
+    output:
+        "05_ft/{nico}_gene.gtf",
+        "05_ft/{nico}_transcript.gtf"
+    threads: 20
+    shell:
+        "stringtie -e -p {threads} -G /root/s/r/p/A_th/WT-Al_VS_WT-CK/genome/tair10.gtf -A {output[0]} -o {output[1]} {input}"
+   
